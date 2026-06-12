@@ -11,7 +11,7 @@ const wizardState = require("../clan/stateWiizard");
 
 
 function escapeMarkdown(text) {
-  if (!text) return '—';
+  if (text === null || text === undefined || text === "") return '—';
   return text
     .replace(/_/g, '\\_')
     .replace(/\*/g, '\\*')
