@@ -86,63 +86,44 @@ module.exports = function registerClanWizard(bot) {
   // ===== 2) Шаги мастера регистрации (только ЛС) =====
   bot.on("message", async (msg) => {
     if (msg.chat.type !== "private") return;
+
     const userId = msg.from.id;
     const s = wizardState.get(userId);
     if (!s) return;
 
     const p = s.payload;
-    p.updatePlayer = false;
-    p.inviteCode = false;
 
     // 2.1 Название клана
     if (s.step === "ask_clan_name") {
       const name = normText(msg.text);
-      if (!name) return bot.sendMessage(msg.chat.id, "Введите название.");
+
+      if (!name) {
+        return bot.sendMessage(msg.chat.id, "Введите название.");
+      }
+
       p.clan_name = name;
       s.step = "ask_chat_link";
+
       return bot.sendMessage(
-        msg.chat.id,
-        "✅ Введите ссылку приглашения в чат клана.",
+          msg.chat.id,
+          "✅ Введите ссылку приглашения в чат клана."
       );
     }
 
+    // 2.2 Ссылка на чат клана
     if (s.step === "ask_chat_link") {
       const link = normText(msg.text);
-      p.clan_link = link;
-      s.step = "ask_code";
-      return bot.sendMessage(msg.chat.id, "✅ Введите проверочный код.");
-    }
 
-    // 2.2 Проверочный код
-    if (s.step === "ask_code") {
-      const code = msg.text;
-      const res = await db.query(
-        'SELECT * FROM clan_invites WHERE code = $1 AND active = true',
-        [code]
-      );
-      if (res.rowCount === 0) {
-        return bot.sendMessage(
-          msg.chat.id,
-          '❌ Код недействителен или уже использован. Введи снова:'
-        );
+      if (!link) {
+        return bot.sendMessage(msg.chat.id, "Введите ссылку приглашения в чат клана.");
       }
-      p.inviteCode = code;
-     /* const code = normDigits(msg.text);
-      const expected = normDigits(FALLBACK_CODE);
-      if (code !== expected) {
-        return bot.sendMessage(
-          msg.chat.id,
-          "Код неверный. Проверьте и попробуйте ещё раз."
-        );
-      } */
 
-      const state = wizardState.get(userId) || { step: null, payload: {} };
-    //  const p = state.payload || (state.payload = {});
+      p.clan_link = link;
 
       const player = await getPlayerDescription(userId);
 
       if (player) {
-        state.step = "confirm_existing_profile"; // этот шаг нужен для кнопок
+        s.step = "confirm_existing_profile";
         p.updatePlayer = true;
         p.leaderId = userId;
 
@@ -151,7 +132,7 @@ module.exports = function registerClanWizard(bot) {
           "",
           `👤 Имя:  ${escapeMarkdown(player.name)}`,
           `🏷 Ник:  ${escapeMarkdown(player.nick)}`,
-          `🎮 PUBG ID: \` ${escapeMarkdown(player.pubgId)}\``,
+          `🎮 PUBG ID: \`${escapeMarkdown(player.pubgId)}\``,
           `🎂 Возраст:  ${escapeMarkdown(player.age)}`,
           `📍 Город:  ${escapeMarkdown(player.city)}`,
           "",
@@ -159,9 +140,9 @@ module.exports = function registerClanWizard(bot) {
           "Хотите *использовать его и продолжить* или *изменить* данные?",
         ].join("\n");
 
-        wizardState.set(userId, state);
+        wizardState.set(userId, s);
 
-        await bot.sendMessage(msg.chat.id, text, {
+        return bot.sendMessage(msg.chat.id, text, {
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
@@ -171,106 +152,134 @@ module.exports = function registerClanWizard(bot) {
                   callback_data: "use_existing_continue",
                 },
               ],
-              [{ text: "✏️ Изменить", callback_data: "use_existing_edit" }],
+              [
+                {
+                  text: "✏️ Изменить",
+                  callback_data: "use_existing_edit",
+                },
+              ],
             ],
           },
         });
-        return;
       }
 
-      // если игрока нет — идём обычным путём
-      state.step = "ask_leader_name";
-      wizardState.set(userId, state);
+      s.step = "ask_leader_name";
+      wizardState.set(userId, s);
+
       return bot.sendMessage(msg.chat.id, "👤 Введите имя (как зовут).");
     }
-
 
     // 2.3 Имя лидера
     if (s.step === "ask_leader_name") {
       const leaderName = normText(msg.text);
-      if (!leaderName) return bot.sendMessage(msg.chat.id, "Введите имя.");
+
+      if (!leaderName) {
+        return bot.sendMessage(msg.chat.id, "Введите имя.");
+      }
+
       p.leader_name = leaderName;
       s.step = "ask_leader_nick";
+
       return bot.sendMessage(msg.chat.id, "🏷 Введите ник (в игре).");
     }
 
     // 2.4 Ник лидера
     if (s.step === "ask_leader_nick") {
       const leaderNick = normText(msg.text);
-      if (!leaderNick) return bot.sendMessage(msg.chat.id, "Введите ник.");
+
+      if (!leaderNick) {
+        return bot.sendMessage(msg.chat.id, "Введите ник.");
+      }
+
       p.leader_nick = leaderNick;
       s.step = "ask_leader_pubg_id";
+
       return bot.sendMessage(msg.chat.id, "🎮 Введите PUBG ID (только цифры).");
     }
 
     // 2.5 PUBG ID лидера
     if (s.step === "ask_leader_pubg_id") {
       const pubgId = normDigits(msg.text);
-      if (!pubgId)
+
+      if (!pubgId) {
         return bot.sendMessage(msg.chat.id, "Введите PUBG ID (только цифры).");
+      }
+
       p.leader_pubg_id = pubgId;
       s.step = "ask_leader_age";
+
       return bot.sendMessage(msg.chat.id, "🎂 Введите ваш возраст (число).");
     }
 
     // 2.6 Возраст лидера
     if (s.step === "ask_leader_age") {
       const age = toIntOrNull(msg.text);
+
       if (!age || age < 10 || age > 99) {
         return bot.sendMessage(
-          msg.chat.id,
-          "Введите корректный возраст (10–99).",
+            msg.chat.id,
+            "Введите корректный возраст (10–99)."
         );
       }
+
       p.leader_age = age;
       s.step = "ask_leader_city";
+
       return bot.sendMessage(msg.chat.id, "📍 Введите город.");
     }
 
-    // 2.7 Город лидера → финал (создание клана + лидера)
+    // 2.7 Город лидера → финал
     if (s.step === "ask_leader_city") {
       const city = normText(msg.text);
-      if (!city)
+
+      if (!city) {
         return bot.sendMessage(msg.chat.id, "Введите корректный город.");
+      }
+
       p.leader_city = city;
 
       const clanName = p.clan_name;
 
-      // 🔁 Повторная проверка username перед записью в БД
       const username = getValidUsername(msg.from);
+
       if (!username) {
         wizardState.delete(userId);
+
         return bot.sendMessage(
-          msg.chat.id,
-          [
-            "❗ Нельзя завершить регистрацию — у вашего аккаунта нет корректного *username*.",
-            "",
-            "Как установить:",
-            "1) Откройте *Настройки* Telegram.",
-            "2) *Имя пользователя* → задайте имя (5–32 символа: латиница, цифры, _ ).",
-            "",
-            "После этого начните регистрацию заново.",
-          ].join("\n"),
-          { parse_mode: "Markdown" },
+            msg.chat.id,
+            [
+              "❗ Нельзя завершить регистрацию — у вашего аккаунта нет корректного *username*.",
+              "",
+              "Как установить:",
+              "1) Откройте *Настройки* Telegram.",
+              "2) *Имя пользователя* → задайте имя 5–32 символа: латиница, цифры, _ .",
+              "",
+              "После этого начните регистрацию заново.",
+            ].join("\n"),
+            { parse_mode: "Markdown" }
         );
       }
+
       const telegramTag = "@" + username;
+
       console.log(p);
+
       try {
         await deactivateOwnerClans(userId);
-        const clanId =  await registerClan(clanName, userId, telegramTag, p, wizardState); 
-        await deactivateClanInviteDB(clanId, p.inviteCode);
+
+        await registerClan(clanName, userId, telegramTag, p, wizardState);
+
         await bot.sendMessage(
-          msg.chat.id,
-          [
-            `🎉 Клан «${clanName}» зарегистрирован!`,
-            `👑 Лидер: ${p.leader_name} (${p.leader_nick}), PUBG ID: ${p.leader_pubg_id}, ${p.leader_age} лет, ${p.leader_city}.`,
-            "",
-            "Дальше:",
-            "1) Добавьте бота в **админ-чат**, выдайте админские права и напишите там: `!привязать админку`.",
-            "2) Добавьте бота в **обычные** чаты клана и в каждом напишите: `!привязать чат`.",
-          ].join("\n"),
-          { parse_mode: "Markdown" },
+            msg.chat.id,
+            [
+              `🎉 Клан «${clanName}» зарегистрирован!`,
+              `👑 Лидер: ${p.leader_name} (${p.leader_nick}), PUBG ID: ${p.leader_pubg_id}, ${p.leader_age} лет, ${p.leader_city}.`,
+              "",
+              "Дальше:",
+              "1) Добавьте бота в *админ-чат*, выдайте админские права и напишите там: `!привязать админку`.",
+              "2) Добавьте бота в *обычные* чаты клана и в каждом напишите: `!привязать чат`.",
+            ].join("\n"),
+            { parse_mode: "Markdown" }
         );
 
         wizardState.delete(userId);
@@ -278,23 +287,28 @@ module.exports = function registerClanWizard(bot) {
         try {
           await db.query("ROLLBACK");
         } catch (_) {}
+
         console.error("register clan FINAL error", {
           code: err.code,
           constraint: err.constraint,
           table: err.table,
           detail: err.detail,
         });
+
         if (err && err.code === "23505") {
           return bot.sendMessage(
-            msg.chat.id,
-            "⚠️ У вас уже есть активный клан. Сначала деактивируйте его, чтобы создать новый.",
+              msg.chat.id,
+              "⚠️ У вас уже есть активный клан. Сначала деактивируйте его, чтобы создать новый."
           );
         }
+
         console.error("register clan FINAL error", err);
-        bot.sendMessage(
-          msg.chat.id,
-          "❌ Ошибка при регистрации. Попробуйте позже.",
+
+        await bot.sendMessage(
+            msg.chat.id,
+            "❌ Ошибка при регистрации. Попробуйте позже."
         );
+
         wizardState.delete(userId);
       }
     }
