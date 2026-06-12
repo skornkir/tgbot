@@ -7,16 +7,17 @@ const deactivateOwnerClans = require("../clan/deactivateOwnerClans");
 const deactivateClanInviteDB = require("../db/deactivateClanInviteDB");
 
 const FALLBACK_CODE = process.env.CLAN_VERIFY_CODE || "417";
-const wizardState = require("../clan/stateWiizard"); 
+const wizardState = require("../clan/stateWiizard");
 
 
 function escapeMarkdown(text) {
-  if (text === null || text === undefined || text === "") return '—';
-  return text
-    .replace(/_/g, '\\_')
-    .replace(/\*/g, '\\*')
-    .replace(/`/g, '\\`')
-    .replace(/\[/g, '\\[');
+  if (text === null || text === undefined || text === "") return "—";
+
+  return String(text)
+      .replace(/_/g, "\\_")
+      .replace(/\*/g, "\\*")
+      .replace(/`/g, "\\`")
+      .replace(/\[/g, "\\[");
 }
 
 // ===== Утилиты =====
